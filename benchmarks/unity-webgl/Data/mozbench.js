@@ -43,11 +43,16 @@ function postResults() {
     result: Math.round(Math.pow(product_of_results, 1.0/results.length))
   });
 
-  var xmlHttp = new XMLHttpRequest();
-  xmlHttp.open("POST", "/results", true);
-  xmlHttp.setRequestHeader("Content-type",
-                            "application/x-www-form-urlencoded");
-  // We need to use encodeURIComponent because of the '&' in benchmark names.
-  xmlHttp.send("results=" + encodeURIComponent(JSON.stringify(results)));
+  if (location.search == '?raptor') {
+    var _data = ['raptor-benchmark', 'unity-webgl', JSON.stringify(results)];
+    window.postMessage(_data, '*');
+  } else {
+    var xmlHttp = new XMLHttpRequest();
+    xmlHttp.open("POST", "/results", true);
+    xmlHttp.setRequestHeader("Content-type",
+                              "application/x-www-form-urlencoded");
+    // We need to use encodeURIComponent because of the '&' in benchmark names.
+    xmlHttp.send("results=" + encodeURIComponent(JSON.stringify(results)));
+  }
 }
 

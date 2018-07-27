@@ -19,7 +19,7 @@
 The tag and title should be unity-webgl-v1 (replace v1 with the next version
 number).
 
-5. Update the appropriate fetch task with the url, hash and size. Benchmark
+5. Update the appropriate fetch task with the url, sha256 hash and size. Benchmark
 fetches are found here:  
     https://searchfox.org/mozilla-central/source/taskcluster/ci/fetch/benchmarks.yml
 

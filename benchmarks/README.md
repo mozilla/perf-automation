@@ -5,7 +5,7 @@
     
     ```
     $ cd perf-automation/benchmarks
-    $ zip -r unity-webgl-\`git rev-parse --short=12 HEAD\`.zip unity-webgl
+    $ zip -r unity-webgl-`git rev-parse --short=12 HEAD`.zip unity-webgl
     ```
 
 3. Figure out the sha256 hash and size:

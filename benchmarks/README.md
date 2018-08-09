@@ -15,6 +15,12 @@
     $ du -b unity-webgl-<hash>.zip
     ```
 
+    Note: On OSX instead of 'du' you can use:
+
+    ```
+    stat -f "%z bytes" unity-webgl-<hash>.zip
+    ```
+
 4. Upload the zip as a Github release (click "Releases" on the gihub page).
 The tag and title should be unity-webgl-v1 (replace v1 with the next version
 number).

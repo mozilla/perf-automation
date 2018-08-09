@@ -1,0 +1,109 @@
+<html>
+<body>
+
+<script src='./embenchen/driver.js'></script>
+<script>
+
+var results = [];
+
+var request = null,
+    db = null;
+
+const ANGRY_BOTS_SRC = '/wasm-misc/AngryBots.wasm';
+
+function addResult(name, value) {
+    results.push({
+        name: name,
+        time: value
+    });
+}
+
+function finish() {
+    console.log('Done!');
+
+    let total = 0;
+    for (let r of results) {
+        console.log(r.name, ':', r.time);
+        total += r.time;
+    }
+
+    console.log('total', total);
+
+    results.push({
+        name: "__total__",
+        time: total
+    });
+
+    _data = ['raptor-benchmark', 'wasm-misc', results];
+    window.postMessage(_data, '*');
+}
+
+function instantiate(module) {
+    try {
+        new WebAssembly.Instance(module);
+    } catch(e) {
+        // Chrome instance error.
+        if (!e.toString().match("Imports argument must be present") &&
+        // Firefox instance error.
+            !e.toString().match("second argument must be an object"))
+            throw e;
+    }
+}
+
+var time = null;
+
+fetch(ANGRY_BOTS_SRC)
+.then(response => response.arrayBuffer())
+.then(buffer => {
+    time = performance.now();
+    var valid = WebAssembly.validate(buffer);
+    time = performance.now() - time;
+
+    if (!valid) {
+        var message = '';
+        try {
+            new WebAssembly.Module(buffer)
+        } catch(ex) {
+            message = ex && ex.message;
+        }
+        throw new Error("AngryBots doesn't validate?!\n" + message);
+    }
+
+    addResult("validate", time);
+
+    time = performance.now();
+    return WebAssembly.compile(buffer);
+})
+.then(module => {
+    time = performance.now() - time;
+
+    addResult("compile", time);
+
+    return WebAssembly.instantiate(module)
+    .then(() => {
+        throw new Error('unexpected success!');
+    })
+    .catch(e => {
+        // Chrome instance error.
+        if (!e.toString().match("Imports argument must be present") &&
+        // Firefox instance error.
+            !e.toString().match("second argument must be an object"))
+        {
+            throw e;
+        }
+    });
+})
+.then(() => {
+    return run_embenchen();
+})
+.then(() => {
+    finish();
+})
+.catch(e => {
+    console.error('Error', e);
+    throw e;
+});
+</script>
+
+</body>
+</html>

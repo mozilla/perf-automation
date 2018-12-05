@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=windows-1252">
+        <style>
+            body {
+                margin: 0px;
+            }
+        </style>
+    </head>
+    <body>
+    <script type="text/javascript" async="" src="zergnet-3826556079_data/zerg.js"></script><script>
+    (function(doc) {
+        var fallbackWidgetId = "10038534";
+        var widgetId = "";
+        var queryArgs = {};
+        var all_args = location.search.replace(/^\?/, "").split("&");
+        for (var i = 0; i < all_args.length; i++) {
+            var pair = all_args[i].split("=");
+            queryArgs[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1]);
+        }
+        widgetId = queryArgs.widgetId ? queryArgs.widgetId : fallbackWidgetId;
+        var container = doc.createElement("div");
+        container.id = "zergnet-widget-" + widgetId;
+        doc.body.appendChild(container);
+
+        // Zergnet provided code
+        var zergnet = document.createElement("script");
+        zergnet.type = "text/javascript";
+        zergnet.async = true;
+        zergnet.src = "https://www.zergnet.com/zerg.js?id=" + widgetId;
+        var znscr = document.getElementsByTagName("script")[0];
+        znscr.parentNode.insertBefore(zergnet, znscr);
+    })(document);
+    </script><div id="zergnet-widget-47009" class="widget-loaded"></div>
+    
+
+</body></html>

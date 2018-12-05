@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 19.2.1, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 32 32" style="enable-background:new 0 0 32 32;" xml:space="preserve">
+<style type="text/css">
+	.st0{display:none;}
+	.st1{display:inline;fill:none;enable-background:new    ;}
+	.st2{opacity:0.3;}
+	.st3{fill:#0078D7;}
+</style>
+<g id="Layer_1" class="st0">
+	
+		<image style="display:inline;overflow:visible;" width="30" height="30" xlink:href="FF13E5A7A7652EE8.png"  transform="matrix(1 0 0 1 0.7708 1.0208)">
+	</image>
+	<path class="st1" d="z"/>
+</g>
+<g id="Layer_2">
+	<g>
+		<g class="st2">
+			<path class="st3" d="M16,31.6c-8.6,0-15.6-7-15.6-15.6c0-8.6,7-15.6,15.6-15.6c8.6,0,15.6,7,15.6,15.6
+				C31.6,24.6,24.6,31.6,16,31.6z M16,3C8.8,3,3,8.8,3,16s5.8,13,13,13s13-5.8,13-13S23.2,3,16,3z"/>
+		</g>
+		<g>
+			<path class="st3" d="M16,29C8.8,29,3,23.2,3,16C3,8.8,8.8,3,16,3c7.2,0,13,5.8,13,13C29,23.2,23.2,29,16,29z M16,5.5
+				C10.2,5.5,5.5,10.2,5.5,16S10.2,26.5,16,26.5S26.5,21.8,26.5,16S21.8,5.5,16,5.5z"/>
+		</g>
+	</g>
+</g>
+</svg>

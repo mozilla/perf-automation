@@ -1,0 +1,50 @@
+.canvas-body b, .hero-slideshow-description b{
+    font-weight: 700
+}
+
+.canvas-body i, .hero-slideshow-description i{
+    font-style: italic
+}
+
+.canvas-body u, .hero-slideshow-description u{
+    text-decoration: underline;
+}
+
+.canvas-body h1,
+.canvas-body h2,
+.canvas-body h3,
+.canvas-body h4,
+.canvas-body h5,
+.canvas-body h6 {
+    -moz-osx-font-smoothing: grayscale;
+    -moz-text-rendering: optimizeLegibility;
+    -ms-font-smoothing: antialiased;
+    -ms-text-rendering: optimizeLegibility;
+    -o-font-smoothing: antialiased;
+    -o-text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-rendering: optimizeLegibility;
+    font-smoothing: antialiased;
+    margin: .5em 0;
+    text-rendering: optimizeLegibility;
+}
+
+.canvas-body h2 {
+    font-size: 1.4em;
+    line-height: 1.4em;
+}
+
+.canvas-body h3 {
+    font-size: 1.2em;
+    line-height: 1.2em;
+}
+
+.canvas-body ul, .canvas-body ol {
+    padding-left: 20px;
+    margin: 0 0 1.5em 0;
+}
+
+.canvas-body li img {
+    max-width: 100%;
+    height: auto;
+}

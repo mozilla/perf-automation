@@ -289,6 +289,8 @@ function postToRaptor() {
     _data = ['raptor-benchmark', 'assorted-dom', benchmark_results]
     console.log("posting results to raptor browser extension");
     window.postMessage(_data, '*');
+    // Send the results to browsertime
+    window.sessionStorage.setItem('benchmark_results',  JSON.stringify(_data));
 }
 
 window.onload = function(){

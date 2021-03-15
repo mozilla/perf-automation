@@ -416,6 +416,8 @@ class Driver {
             var _data = ['raptor-benchmark', 'jetstream2', measured];
             console.log('jetstream2 is about to post results to the raptor webext');
             window.postMessage(_data, '*');
+            // Send the results to browsertime
+            window.sessionStorage.setItem('benchmark_results',  JSON.stringify(_data));
         }
         //=================================================================================
 

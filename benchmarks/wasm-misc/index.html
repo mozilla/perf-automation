@@ -36,6 +36,8 @@ function finish() {
 
     _data = ['raptor-benchmark', 'wasm-misc', results];
     window.postMessage(_data, '*');
+    // Send the results to browsertime
+    window.sessionStorage.setItem('benchmark_results',  JSON.stringify(_data));
 }
 
 function instantiate(module) {

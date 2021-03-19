@@ -46,6 +46,8 @@ function postResults() {
   if (location.search == '?raptor') {
     var _data = ['raptor-benchmark', 'unity-webgl', JSON.stringify(results)];
     window.postMessage(_data, '*');
+    // Send the results to browsertime
+    window.sessionStorage.setItem('benchmark_results',  JSON.stringify(_data));
   } else {
     var xmlHttp = new XMLHttpRequest();
     xmlHttp.open("POST", "/results", true);

@@ -9,7 +9,7 @@ let accountSettings = new MatrixEvent({
 });
 
 export default class FakeMatrixClient extends EventEmitter {
-    room = null;
+    rooms = null;
     unstableClientRelationAggregation = true;
 
     constructor() {
@@ -26,10 +26,8 @@ export default class FakeMatrixClient extends EventEmitter {
     getPushActionsForEvent() { return { notify: false, tweaks: {} }; }
     isRoomEncrypted() { return false; }
     getRoom(roomid) {
-        if (this.room) {
-            if (roomid === this.room.name) {
-                return this.room;
-            }
+        if (this.rooms && roomid in this.rooms) {
+            return this.rooms[roomid];
         }
         return null;
     }

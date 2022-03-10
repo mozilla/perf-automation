@@ -38,14 +38,12 @@ DMRoomMap.makeShared().start();
 let room1_id = "!AAAAAAAAAAAA:example.org";
 let room2_id = "!BBBBBBBBBBBB:example.org";
 
-let rooms = {};
-rooms[room1_id] = synthesize_room(room1_id);
-rooms[room2_id] = synthesize_room(room2_id);
+client.rooms = {};
+client.rooms[room1_id] = synthesize_room(room1_id);
+client.rooms[room2_id] = synthesize_room(room2_id);
 
 // Demo render of a room.
 function render_room(room_id) {
-    client.room = rooms[room_id];
-
     defaultDispatcher.dispatch({
         action: "view_room",
         room_id,
@@ -65,6 +63,13 @@ function render_room(room_id) {
     elem = React.createElement(MatrixClientContext.Provider, { value: client }, elem);
 
     ReactDOM.render(elem, target);
+
+    // A lot of objects are leaked via the two arrays of timers stored in the
+    // UserActivity singleton. Work around this.
+    if (typeof globalThis.mxUserActivity !== "object") {
+        throw "Expected mxUserActivity";
+    }
+    globalThis.mxUserActivity = undefined;
 }
 
 let old_console = console.log;
@@ -105,6 +110,15 @@ function rerender() {
         );
     }
 }
+
+// Clamp timeouts to prevent leaking memory on each iteration.
+let orig_setTimeout = globalThis.setTimeout;
+globalThis.setTimeout = function(fun, time) {
+    if (time > 10) {
+        time = 10;
+    }
+    return orig_setTimeout(fun, time);
+};
 
 let startTime = Date.now();
 setTimeout(rerender, 0);

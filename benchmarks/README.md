@@ -31,3 +31,20 @@ fetches are found here:
 
 6. Update the local revision for running with the mach command here:  
     https://searchfox.org/mozilla-central/source/testing/raptor/mach_commands.py
+
+
+### Matrix-React-Bench Updates
+
+
+1. Pull the code from this repo: https://github.com/jandem/matrix-react-bench
+
+2. Build it by following the instructions in the README.
+
+3. Copy the repo folder to `benchmarks/` in this repo.
+
+4. Delete the folders and files:
+    * `benchmarks/matrix-react-bench/node_modules/.cache`
+    * `benchmarks/matrix-react-bench/.git`
+    * `benchmarks/matrix-react-bench/.git-ignore`
+
+6. Commit the new code to the master branch in this repo, and follow the instructions for creating a new benchmark release.

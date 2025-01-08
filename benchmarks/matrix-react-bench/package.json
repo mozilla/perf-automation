@@ -1,5 +1,6 @@
 {
-  "description": "Pure JS benchmark for Matrix/Element channel view switching. Note that this package is for build/tooling purposes only and it is a non-published repository.",  "private": true,
+  "description": "Pure JS benchmark for Matrix/Element channel view switching. Note that this package is for build/tooling purposes only and it is a non-published repository.",
+  "private": true,
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "webpack"

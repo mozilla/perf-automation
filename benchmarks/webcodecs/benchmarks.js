@@ -338,6 +338,7 @@ async function encodeCanvas(
       });
       frameCount += 1;
       encodeDuration += frameDuration;
+      frame.close();
     }, frameDuration);
   });
 }

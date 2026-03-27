@@ -29,6 +29,7 @@ function sendResults(results) {
 }
 
 async function runTests(testcases) {
+  document.getElementById("progress-label").textContent = "Benchmark in progress...";
   document.getElementById("progress-bar").max = testcases.length;
   document.getElementById("progress-bar").value = 0;
 

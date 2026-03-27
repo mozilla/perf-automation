@@ -19,6 +19,14 @@ const KEY_FRAME_INTERVAL = 15; // 1 key every 15 frames
 
 addTestsLoader(async function() {
   const { configList, width, height, framerate, bitrate } = parseParamsFromURL();
+
+  const fps = framerate;
+  const frameDuration = Math.round(1000 / fps);
+  const frameCount = Math.floor(TOTAL_DURATION / frameDuration) + 1;
+
+  // Pre-generate frames once for all tests
+  const frames = await generateFrames(width, height, frameCount, frameDuration);
+
   let testcases = [];
   for (const c of configList) {
     let config = {
@@ -39,7 +47,7 @@ addTestsLoader(async function() {
         testcases.push({
           name: `${name} realtime encode`,
           func: async function() {
-            return await realtimeEncodeTest(config);
+            return await realtimeEncodeTest(config, frames, frameDuration);
           }
         });
       }
@@ -48,7 +56,7 @@ addTestsLoader(async function() {
         testcases.push({
           name: `${name} quality encode`,
           func: async function() {
-            return await qualityEncodeTest(config);
+            return await qualityEncodeTest(config, frames);
           }
         });
       }
@@ -80,7 +88,7 @@ function parseParamsFromURL() {
   const latencyModes = params
     .get("latencyModes")
     ?.split(",")
-    .filter(mode => mode === "realtime" || mode === "quality") || DEFAULT_PARAMS.latencyModes;
+    .filter(mode => mode == "realtime" || mode == "quality") || DEFAULT_PARAMS.latencyModes;
 
   const configList = params.has("codecs")
     ? params.get("codecs").split(",").flatMap(codecString => {
@@ -95,15 +103,98 @@ function parseParamsFromURL() {
   return { configList, width, height, framerate, bitrate };
 }
 
-async function realtimeEncodeTest(config) {
-  const fps = 30;
+// --- Frame pre-generation ---
 
+async function generateFrames(width, height, count, frameDuration) {
+  const canvas = createCanvas(width, height);
+  const frames = [];
+
+  const progressBar = document.getElementById("progress-bar");
+  const progressLabel = document.getElementById("progress-label");
+  progressLabel.textContent = "Generating frames...";
+  progressBar.max = count;
+  progressBar.value = 0;
+
+  for (let i = 0; i < count; i++) {
+    drawClock(canvas);
+    const timestamp = i * frameDuration;
+    const frame = new VideoFrame(canvas, { timestamp });
+
+    const format = "RGBX";
+    const size = frame.allocationSize({ format });
+    const buffer = new ArrayBuffer(size);
+    await frame.copyTo(buffer, { format });
+    frames.push({ buffer, format, width, height, timestamp });
+
+    frame.close();
+    progressBar.value = i + 1;
+
+    // Yield to the browser to allow canvas repaint and progress bar update
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  }
+
+  progressLabel.textContent = "";
+  removeCanvas(canvas);
+  return frames;
+}
+
+function createFrameFromData(frameData) {
+  return new VideoFrame(frameData.buffer, {
+    format: frameData.format,
+    codedWidth: frameData.width,
+    codedHeight: frameData.height,
+    timestamp: frameData.timestamp,
+  });
+}
+
+// --- Frame feeding ---
+
+async function feedFramesRealtime(
+  worker,
+  frames,
+  frameDuration,
+  keyFrameIntervalInFrames
+) {
+  let frameIndex = 0;
+  return new Promise((resolve) => {
+    const intervalId = setInterval(() => {
+      if (frameIndex >= frames.length) {
+        clearInterval(intervalId);
+        resolve();
+        return;
+      }
+      const frame = createFrameFromData(frames[frameIndex]);
+      worker.postMessage({
+        command: "encode",
+        frame,
+        isKey: frameIndex % keyFrameIntervalInFrames == 0,
+      });
+      frame.close();
+      frameIndex++;
+    }, frameDuration);
+  });
+}
+
+function feedFramesBatch(worker, frames, keyFrameIntervalInFrames) {
+  for (let i = 0; i < frames.length; i++) {
+    const frame = createFrameFromData(frames[i]);
+    worker.postMessage({
+      command: "encode",
+      frame,
+      isKey: i % keyFrameIntervalInFrames == 0,
+    });
+    frame.close();
+  }
+}
+
+// --- Test functions ---
+
+async function realtimeEncodeTest(config, frames, frameDuration) {
   const worker = new Worker("encoder-worker.js");
   config.latencyMode = "realtime";
   configureEncoder(worker, config);
 
-  const canvas = createCanvas(config.width, config.height);
-  await encodeCanvas(worker, canvas, fps, TOTAL_DURATION, KEY_FRAME_INTERVAL);
+  await feedFramesRealtime(worker, frames, frameDuration, KEY_FRAME_INTERVAL);
   let { encodeTimes, outputTimes } = await getEncoderResults(worker);
 
   let results = { key: {}, delta: {} };
@@ -135,7 +226,6 @@ async function realtimeEncodeTest(config) {
     results.delta.roundTripTimes.map(x => x.time)
   );
 
-  removeCanvas(canvas);
   worker.terminate();
 
   return {
@@ -166,20 +256,16 @@ async function realtimeEncodeTest(config) {
   };
 }
 
-async function qualityEncodeTest(config) {
-  const fps = 30;
-
+async function qualityEncodeTest(config, frames) {
   const worker = new Worker("encoder-worker.js");
   config.latencyMode = "quality";
   configureEncoder(worker, config);
 
-  const canvas = createCanvas(config.width, config.height);
-  await encodeCanvas(worker, canvas, fps, TOTAL_DURATION, KEY_FRAME_INTERVAL);
+  feedFramesBatch(worker, frames, KEY_FRAME_INTERVAL);
   let { encodeTimes, outputTimes } = await getEncoderResults(worker);
 
   let duration = getTotalDuration(encodeTimes, outputTimes);
 
-  removeCanvas(canvas);
   worker.terminate();
 
   return {
@@ -189,6 +275,8 @@ async function qualityEncodeTest(config) {
     },
   };
 }
+
+// --- Canvas / drawing ---
 
 function createCanvas(width, height) {
   const canvas = document.createElement("canvas");
@@ -301,6 +389,8 @@ function drawHand(ctx, pos, length, width, color = "black") {
   ctx.restore();
 }
 
+// --- Worker communication ---
+
 function configureEncoder(worker, config) {
   worker.postMessage({
     command: "configure",
@@ -308,51 +398,19 @@ function configureEncoder(worker, config) {
   });
 }
 
-async function encodeCanvas(
-  worker,
-  canvas,
-  fps,
-  totalDuration,
-  keyFrameIntervalInFrames
-) {
-  const frameDuration = Math.round(1000 / fps); // ms
-  let encodeDuration = 0;
-  let frameCount = 0;
-  let intervalId;
-
-  return new Promise((resolve, _) => {
-    // first callback happens after frameDuration.
-    intervalId = setInterval(() => {
-      if (encodeDuration > totalDuration) {
-        clearInterval(intervalId);
-        resolve(encodeDuration);
-        return;
-      }
-      drawClock(canvas);
-      const frame = new VideoFrame(canvas, { timestamp: encodeDuration });
-      worker.postMessage({
-        command: "encode",
-        frame,
-        isKey: frameCount % keyFrameIntervalInFrames == 0,
-      });
-      frameCount += 1;
-      encodeDuration += frameDuration;
-      frame.close();
-    }, frameDuration);
-  });
-}
-
 async function getEncoderResults(worker) {
   worker.postMessage({ command: "flush" });
   return new Promise((resolve, _) => {
     worker.onmessage = event => {
-      if (event.data.command === "result") {
+      if (event.data.command == "result") {
         const { encodeTimes, outputTimes } = event.data;
         resolve({ encodeTimes, outputTimes });
       }
     };
   });
 }
+
+// --- Statistics ---
 
 function getTotalDuration(encodeTimes, outputTimes) {
   if (!outputTimes.length || encodeTimes.length < outputTimes.length) {

@@ -14,6 +14,9 @@ const DEFAULT_PARAMS = {
   ]
 };
 
+const TOTAL_DURATION = 3000; // ms
+const KEY_FRAME_INTERVAL = 15; // 1 key every 15 frames
+
 addTestsLoader(async function() {
   const { configList, width, height, framerate, bitrate } = parseParamsFromURL();
   let testcases = [];
@@ -94,15 +97,13 @@ function parseParamsFromURL() {
 
 async function realtimeEncodeTest(config) {
   const fps = 30;
-  const totalDuration = 3000; // ms
-  const keyFrameInterval = 15; // 1 key every 15 frames
 
   const worker = new Worker("encoder-worker.js");
   config.latencyMode = "realtime";
   configureEncoder(worker, config);
 
   const canvas = createCanvas(config.width, config.height);
-  await encodeCanvas(worker, canvas, fps, totalDuration, keyFrameInterval);
+  await encodeCanvas(worker, canvas, fps, TOTAL_DURATION, KEY_FRAME_INTERVAL);
   let { encodeTimes, outputTimes } = await getEncoderResults(worker);
 
   let results = { key: {}, delta: {} };
@@ -167,15 +168,13 @@ async function realtimeEncodeTest(config) {
 
 async function qualityEncodeTest(config) {
   const fps = 30;
-  const totalDuration = 3000; // ms
-  const keyFrameInterval = 15; // 1 key every 15 frames
 
   const worker = new Worker("encoder-worker.js");
   config.latencyMode = "quality";
   configureEncoder(worker, config);
 
   const canvas = createCanvas(config.width, config.height);
-  await encodeCanvas(worker, canvas, fps, totalDuration, keyFrameInterval);
+  await encodeCanvas(worker, canvas, fps, TOTAL_DURATION, KEY_FRAME_INTERVAL);
   let { encodeTimes, outputTimes } = await getEncoderResults(worker);
 
   let duration = getTotalDuration(encodeTimes, outputTimes);

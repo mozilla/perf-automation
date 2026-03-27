@@ -3,6 +3,7 @@ const DEFAULT_PARAMS = {
   height: 480,
   bitrate: 1000000, // 1 Mbps
   framerate: 30,
+  sources: ["canvas"],
   pixelFormats: ["RGBX"],
   latencyModes: ["realtime", "quality"],
   codecList: [
@@ -19,44 +20,73 @@ const TOTAL_DURATION = 3000; // ms
 const KEY_FRAME_INTERVAL = 15; // 1 key every 15 frames
 
 addTestsLoader(async function() {
-  const { configList, width, height, framerate, bitrate, pixelFormats } =
+  const { configList, width, height, framerate, bitrate, pixelFormats, sources } =
     parseParamsFromURL();
 
   const fps = framerate;
   const frameDuration = Math.round(1000 / fps);
   const frameCount = Math.floor(TOTAL_DURATION / frameDuration) + 1;
 
-  // Pre-generate frames once for all tests
-  const frameDataMap = await generateFrames(
-    width, height, frameCount, frameDuration, pixelFormats
-  );
+  // Filter to configs the browser actually supports.
+  let supportedConfigs = [];
+  for (const c of configList) {
+    let config = { ...c, width, height, bitrate, framerate };
+    const support = await VideoEncoder.isConfigSupported(config);
+    if (support.supported) {
+      supportedConfigs.push(config);
+    }
+  }
+
+  // Set up camera if requested and available.
+  let cameraVideo = null;
+  if (sources.includes("camera")) {
+    // Camera mode: create VideoFrames directly from the live video element
+    // during each test instead of pre-generating and storing frames.
+    // Pre-storing VideoFrame objects would risk exhausting the browser's
+    // VideoFrame resource pool, which is backed by GPU/video memory with
+    // platform-dependent limits.
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter(d => d.kind == "videoinput");
+    if (cameras.length) {
+      try {
+        cameraVideo = await startCamera(width, height);
+      } catch (e) {
+        // Camera setup failed; cameraVideo stays null, skipping camera tests.
+      }
+    }
+  }
+
+  // Pre-generate canvas frames if needed.
+  let frameDataMap = null;
+  if (sources.includes("canvas")) {
+    frameDataMap = await generateFrames(
+      width, height, frameCount, frameDuration, pixelFormats
+    );
+  }
 
   let testcases = [];
-  for (const pixelFormat of pixelFormats) {
-    const frames = frameDataMap[pixelFormat];
-    for (const c of configList) {
-      let config = {
-        ...c, // latencyMode and avc should have been set
-        width,
-        height,
-        bitrate,
-        framerate,
-      };
-      const support = await VideoEncoder.isConfigSupported(config);
-      if (support.supported) {
-        let name = `${config.codec}`;
-        if (config.avc) {
-          name += ` (${config.avc.format})`;
+  for (const config of supportedConfigs) {
+    let baseName = `${config.codec}`;
+    if (config.avc) {
+      baseName += ` (${config.avc.format})`;
+    }
+
+    for (const source of sources) {
+      if (source == "camera") {
+        if (!cameraVideo) {
+          continue;
         }
-        if (pixelFormats.length > 1 || pixelFormat != "RGBX") {
-          name += ` ${pixelFormat}`;
-        }
+        // Pixel format selection is skipped for camera since it provides
+        // frames in its native format.
+        let name = `${baseName} camera`;
 
         if (config.latencyMode == "realtime") {
           testcases.push({
             name: `${name} realtime encode`,
             func: async function() {
-              return await realtimeEncodeTest(config, frames, frameDuration);
+              return await realtimeEncodeTestFromCamera(
+                config, cameraVideo, frameDuration, frameCount
+              );
             }
           });
         }
@@ -65,9 +95,34 @@ addTestsLoader(async function() {
           testcases.push({
             name: `${name} quality encode`,
             func: async function() {
-              return await qualityEncodeTest(config, frames);
+              return await qualityEncodeTestFromCamera(
+                config, cameraVideo, frameCount, frameDuration
+              );
             }
           });
+        }
+      } else {
+        for (const pixelFormat of pixelFormats) {
+          const frames = frameDataMap[pixelFormat];
+          let name = `${baseName} ${pixelFormat} canvas`;
+
+          if (config.latencyMode == "realtime") {
+            testcases.push({
+              name: `${name} realtime encode`,
+              func: async function() {
+                return await realtimeEncodeTest(config, frames, frameDuration);
+              }
+            });
+          }
+
+          if (config.latencyMode == "quality") {
+            testcases.push({
+              name: `${name} quality encode`,
+              func: async function() {
+                return await qualityEncodeTest(config, frames);
+              }
+            });
+          }
         }
       }
     }
@@ -115,7 +170,12 @@ function parseParamsFromURL() {
         latencyModes.map(latencyMode => ({ ...config, latencyMode }))
       );
 
-  return { configList, width, height, framerate, bitrate, pixelFormats };
+  const sources = params
+    .get("sources")
+    ?.split(",")
+    .filter(s => s == "canvas" || s == "camera") || DEFAULT_PARAMS.sources;
+
+  return { configList, width, height, framerate, bitrate, pixelFormats, sources };
 }
 
 // --- Frame pre-generation ---
@@ -266,6 +326,75 @@ function createFrameFromData(frameData) {
   });
 }
 
+// --- Camera ---
+
+async function startCamera(width, height) {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { width, height },
+    audio: false,
+  });
+  const video = document.createElement("video");
+  video.autoplay = true;
+  video.muted = true;
+  video.srcObject = stream;
+  await video.play();
+  // Wait until a video frame is actually available for capture.
+  // requestVideoFrameCallback fires when a frame is presented, which is the
+  // reliable signal that new VideoFrame(video) will succeed.
+  await new Promise(resolve => video.requestVideoFrameCallback(resolve));
+
+  const container = document.createElement("div");
+  const label = document.createElement("div");
+  label.textContent = "Camera preview";
+  container.appendChild(label);
+  video.style.width = `${width}px`;
+  video.style.height = `${height}px`;
+  container.appendChild(video);
+  container.style.display = "none";
+  document.body.appendChild(container);
+
+  return video;
+}
+
+async function feedFramesFromCameraRealtime(
+  worker, video, frameDuration, frameCount, keyFrameIntervalInFrames
+) {
+  let frameIndex = 0;
+  return new Promise((resolve) => {
+    const intervalId = setInterval(() => {
+      if (frameIndex >= frameCount) {
+        clearInterval(intervalId);
+        resolve();
+        return;
+      }
+      const timestamp = frameIndex * frameDuration;
+      const frame = new VideoFrame(video, { timestamp });
+      worker.postMessage({
+        command: "encode",
+        frame,
+        isKey: frameIndex % keyFrameIntervalInFrames == 0,
+      });
+      frame.close();
+      frameIndex++;
+    }, frameDuration);
+  });
+}
+
+function feedFramesFromCameraBatch(
+  worker, video, frameCount, frameDuration, keyFrameIntervalInFrames
+) {
+  for (let i = 0; i < frameCount; i++) {
+    const timestamp = i * frameDuration;
+    const frame = new VideoFrame(video, { timestamp });
+    worker.postMessage({
+      command: "encode",
+      frame,
+      isKey: i % keyFrameIntervalInFrames == 0,
+    });
+    frame.close();
+  }
+}
+
 // --- Frame feeding ---
 
 async function feedFramesRealtime(
@@ -308,14 +437,7 @@ function feedFramesBatch(worker, frames, keyFrameIntervalInFrames) {
 
 // --- Test functions ---
 
-async function realtimeEncodeTest(config, frames, frameDuration) {
-  const worker = new Worker("encoder-worker.js");
-  config.latencyMode = "realtime";
-  configureEncoder(worker, config);
-
-  await feedFramesRealtime(worker, frames, frameDuration, KEY_FRAME_INTERVAL);
-  let { encodeTimes, outputTimes } = await getEncoderResults(worker);
-
+function computeRealtimeStats(encodeTimes, outputTimes) {
   let results = { key: {}, delta: {} };
   results.key.encodeTimes = encodeTimes.filter(x => x.type == "key");
   results.delta.encodeTimes = encodeTimes.filter(x => x.type != "key");
@@ -345,8 +467,6 @@ async function realtimeEncodeTest(config, frames, frameDuration) {
     results.delta.roundTripTimes.map(x => x.time)
   );
 
-  worker.terminate();
-
   return {
     "frame-to-frame mean (key)": {
       value: results.key.roundTripResult.mean,
@@ -375,6 +495,30 @@ async function realtimeEncodeTest(config, frames, frameDuration) {
   };
 }
 
+async function realtimeEncodeTest(config, frames, frameDuration) {
+  const worker = new Worker("encoder-worker.js");
+  config.latencyMode = "realtime";
+  configureEncoder(worker, config);
+  await feedFramesRealtime(worker, frames, frameDuration, KEY_FRAME_INTERVAL);
+  let { encodeTimes, outputTimes } = await getEncoderResults(worker);
+  worker.terminate();
+  return computeRealtimeStats(encodeTimes, outputTimes);
+}
+
+async function realtimeEncodeTestFromCamera(config, video, frameDuration, frameCount) {
+  video.parentNode.style.display = "";
+  const worker = new Worker("encoder-worker.js");
+  config.latencyMode = "realtime";
+  configureEncoder(worker, config);
+  await feedFramesFromCameraRealtime(
+    worker, video, frameDuration, frameCount, KEY_FRAME_INTERVAL
+  );
+  let { encodeTimes, outputTimes } = await getEncoderResults(worker);
+  worker.terminate();
+  video.parentNode.style.display = "none";
+  return computeRealtimeStats(encodeTimes, outputTimes);
+}
+
 async function qualityEncodeTest(config, frames) {
   const worker = new Worker("encoder-worker.js");
   config.latencyMode = "quality";
@@ -387,6 +531,24 @@ async function qualityEncodeTest(config, frames) {
 
   worker.terminate();
 
+  return {
+    "first encode to last output": {
+      value: duration,
+      unit: "ms",
+    },
+  };
+}
+
+async function qualityEncodeTestFromCamera(config, video, frameCount, frameDuration) {
+  video.parentNode.style.display = "";
+  const worker = new Worker("encoder-worker.js");
+  config.latencyMode = "quality";
+  configureEncoder(worker, config);
+  feedFramesFromCameraBatch(worker, video, frameCount, frameDuration, KEY_FRAME_INTERVAL);
+  let { encodeTimes, outputTimes } = await getEncoderResults(worker);
+  let duration = getTotalDuration(encodeTimes, outputTimes);
+  worker.terminate();
+  video.parentNode.style.display = "none";
   return {
     "first encode to last output": {
       value: duration,

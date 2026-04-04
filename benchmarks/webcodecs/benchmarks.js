@@ -27,6 +27,8 @@ addTestsLoader(async function() {
   const frameDuration = Math.round(1000 / fps);
   const frameCount = Math.floor(TOTAL_DURATION / frameDuration) + 1;
 
+  let testcases = [];
+
   // Filter to configs the browser actually supports.
   let supportedConfigs = [];
   for (const c of configList) {
@@ -34,6 +36,13 @@ addTestsLoader(async function() {
     const support = await VideoEncoder.isConfigSupported(config);
     if (support.supported) {
       supportedConfigs.push(config);
+    } else {
+      let name = `${config.codec}`;
+      if (config.avc) {
+        name += ` (${config.avc.format})`;
+      }
+      testcases.push(errorTestCase(
+        `${name} ${config.latencyMode} encode`, "Config not supported"));
     }
   }
 
@@ -47,11 +56,15 @@ addTestsLoader(async function() {
     // platform-dependent limits.
     const devices = await navigator.mediaDevices.enumerateDevices();
     const cameras = devices.filter(d => d.kind == "videoinput");
-    if (cameras.length) {
+    if (!cameras.length) {
+      testcases.push(errorTestCase(
+        "camera", "No video input device found"));
+    } else {
       try {
         cameraVideo = await startCamera(width, height);
       } catch (e) {
-        // Camera setup failed; cameraVideo stays null, skipping camera tests.
+        testcases.push(errorTestCase(
+          "camera", `Setup failed: ${e.message}`));
       }
     }
   }
@@ -64,7 +77,6 @@ addTestsLoader(async function() {
     );
   }
 
-  let testcases = [];
   for (const config of supportedConfigs) {
     let baseName = `${config.codec}`;
     if (config.avc) {

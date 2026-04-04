@@ -22,6 +22,23 @@ function showResults(results, title) {
   container.appendChild(table);
 }
 
+function showError(message) {
+  const errors = document.getElementById("errors");
+  errors.style.display = "block";
+  const li = document.createElement("li");
+  li.textContent = message;
+  document.getElementById("error-list").appendChild(li);
+}
+
+function errorTestCase(name, message) {
+  return {
+    name,
+    func: async function() {
+      return { "error": { value: message, unit: "" } };
+    }
+  };
+}
+
 function sendResults(results) {
   let data = ["raptor-benchmark", "webcodecs", JSON.stringify(results)];
   window.postMessage(data, "*");
@@ -36,10 +53,24 @@ async function runTests(testcases) {
   let testResults = {};
   for (let i = 0; i < testcases.length; i++) {
     console.assert(!testResults.hasOwnProperty(testcases[i].name));
-    let results = await testcases[i].func();
+    try {
+      let results = await testcases[i].func();
+      if (results.error) {
+        showError(`${testcases[i].name}: ${results.error.value}`);
+      } else {
+        showResults(results, testcases[i].name);
+      }
+      testResults[testcases[i].name] = results;
+    } catch (e) {
+      // This may happen if the camera disconnects mid-test, causing
+      // new VideoFrame(video) to throw in the frame feed functions.
+      let msg = `${testcases[i].name}: ${e.message}`;
+      showError(msg);
+      testResults[testcases[i].name] = {
+        "error": { value: msg, unit: "" },
+      };
+    }
     document.getElementById("progress-bar").value++;
-    showResults(results, testcases[i].name);
-    testResults[testcases[i].name] = results;
   }
   document.getElementById("in-progress").style.display = "none";
   sendResults(testResults);

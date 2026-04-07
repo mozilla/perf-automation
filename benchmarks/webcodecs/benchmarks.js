@@ -3,6 +3,7 @@ const DEFAULT_PARAMS = {
   height: 480,
   bitrate: 1000000, // 1 Mbps
   framerate: 30,
+  pixelFormats: ["RGBX"],
   latencyModes: ["realtime", "quality"],
   codecList: [
     { codec: "av01.0.04M.08" },
@@ -14,40 +15,60 @@ const DEFAULT_PARAMS = {
   ]
 };
 
+const TOTAL_DURATION = 3000; // ms
+const KEY_FRAME_INTERVAL = 15; // 1 key every 15 frames
+
 addTestsLoader(async function() {
-  const { configList, width, height, framerate, bitrate } = parseParamsFromURL();
+  const { configList, width, height, framerate, bitrate, pixelFormats } =
+    parseParamsFromURL();
+
+  const fps = framerate;
+  const frameDuration = Math.round(1000 / fps);
+  const frameCount = Math.floor(TOTAL_DURATION / frameDuration) + 1;
+
+  // Pre-generate frames once for all tests
+  const frameDataMap = await generateFrames(
+    width, height, frameCount, frameDuration, pixelFormats
+  );
+
   let testcases = [];
-  for (const c of configList) {
-    let config = {
-      ...c, // latencyMode and avc should have been set
-      width,
-      height,
-      bitrate,
-      framerate,
-    };
-    const support = await VideoEncoder.isConfigSupported(config);
-    if (support.supported) {
-      let name = `${config.codec}`;
-      if (config.avc) {
-        name += ` (${config.avc.format})`;
-      }
+  for (const pixelFormat of pixelFormats) {
+    const frames = frameDataMap[pixelFormat];
+    for (const c of configList) {
+      let config = {
+        ...c, // latencyMode and avc should have been set
+        width,
+        height,
+        bitrate,
+        framerate,
+      };
+      const support = await VideoEncoder.isConfigSupported(config);
+      if (support.supported) {
+        let name = `${config.codec}`;
+        if (config.avc) {
+          name += ` (${config.avc.format})`;
+        }
+        if (pixelFormats.length > 1 || pixelFormat != "RGBX") {
+          name += ` ${pixelFormat}`;
+        }
 
-      if (config.latencyMode == "realtime") {
-        testcases.push({
-          name: `${name} realtime encode`,
-          func: async function() {
-            return await realtimeEncodeTest(config);
-          }
-        });
-      }
+        if (config.latencyMode == "realtime") {
+          testcases.push({
+            name: `${name} realtime encode`,
+            func: async function() {
+              return await realtimeEncodeTest(config, frames, frameDuration);
+            }
+          });
+        }
 
-      if (config.latencyMode == "quality") {
-        testcases.push({
-          name: `${name} quality encode`,
-          func: async function() {
-            return await qualityEncodeTest(config);
-          }
-        });
+        if (config.latencyMode == "quality") {
+          testcases.push({
+            name: `${name} quality encode`,
+            func: async function() {
+              return await qualityEncodeTest(config, frames);
+            }
+          });
+        }
       }
     }
   }
@@ -77,7 +98,12 @@ function parseParamsFromURL() {
   const latencyModes = params
     .get("latencyModes")
     ?.split(",")
-    .filter(mode => mode === "realtime" || mode === "quality") || DEFAULT_PARAMS.latencyModes;
+    .filter(mode => mode == "realtime" || mode == "quality") || DEFAULT_PARAMS.latencyModes;
+
+  const pixelFormats = params
+    .get("pixelFormats")
+    ?.split(",")
+    .filter(f => f == "RGBX" || f == "I420") || DEFAULT_PARAMS.pixelFormats;
 
   const configList = params.has("codecs")
     ? params.get("codecs").split(",").flatMap(codecString => {
@@ -89,20 +115,205 @@ function parseParamsFromURL() {
         latencyModes.map(latencyMode => ({ ...config, latencyMode }))
       );
 
-  return { configList, width, height, framerate, bitrate };
+  return { configList, width, height, framerate, bitrate, pixelFormats };
 }
 
-async function realtimeEncodeTest(config) {
-  const fps = 30;
-  const totalDuration = 3000; // ms
-  const keyFrameInterval = 15; // 1 key every 15 frames
+// --- Frame pre-generation ---
 
+async function generateFrames(width, height, count, frameDuration, formats) {
+  const canvas = createCanvas(width, height);
+  const frameDataMap = {};
+
+  for (const fmt of formats) {
+    frameDataMap[fmt] = [];
+  }
+
+  const needsI420 = formats.includes("I420");
+  let i420PreviewCanvas = null;
+  let i420PreviewContainer = null;
+  if (needsI420) {
+    i420PreviewContainer = document.createElement("div");
+    const label = document.createElement("div");
+    label.textContent = "I420 preview";
+    i420PreviewContainer.appendChild(label);
+    i420PreviewCanvas = document.createElement("canvas");
+    i420PreviewCanvas.width = width;
+    i420PreviewCanvas.height = height;
+    i420PreviewCanvas.style.width = `${width / 4}px`;
+    i420PreviewCanvas.style.height = `${height / 4}px`;
+    i420PreviewContainer.appendChild(i420PreviewCanvas);
+    document.body.appendChild(i420PreviewContainer);
+  }
+
+  const progressBar = document.getElementById("progress-bar");
+  const progressLabel = document.getElementById("progress-label");
+  progressLabel.textContent = "Generating frames...";
+  progressBar.max = count;
+  progressBar.value = 0;
+
+  for (let i = 0; i < count; i++) {
+    drawClock(canvas);
+    const timestamp = i * frameDuration;
+    const canvasFrame = new VideoFrame(canvas, { timestamp });
+
+    // Extract RGBX from canvas-sourced frame
+    const rgbxSize = canvasFrame.allocationSize({ format: "RGBX" });
+    const rgbxBuffer = new ArrayBuffer(rgbxSize);
+    await canvasFrame.copyTo(rgbxBuffer, { format: "RGBX" });
+    canvasFrame.close();
+
+    if (formats.includes("RGBX")) {
+      frameDataMap["RGBX"].push({
+        buffer: rgbxBuffer, format: "RGBX", width, height, timestamp,
+      });
+    }
+
+    if (needsI420) {
+      const i420Buffer = convertRGBXtoI420(new Uint8Array(rgbxBuffer), width, height);
+      frameDataMap["I420"].push({
+        buffer: i420Buffer.buffer, format: "I420", width, height, timestamp,
+      });
+      drawI420ToCanvas(i420PreviewCanvas, i420Buffer, width, height);
+    }
+
+    progressBar.value = i + 1;
+
+    // Yield to the browser to allow canvas repaint and progress bar update
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  }
+
+  progressLabel.textContent = "";
+  removeCanvas(canvas);
+  if (i420PreviewContainer) {
+    document.body.removeChild(i420PreviewContainer);
+  }
+  return frameDataMap;
+}
+
+// RGBX to I420 conversion using BT.601 limited-range coefficients.
+//
+// I420 (aka YUV420p) stores image data as three separate planes:
+//   Y plane: full resolution (width x height), one luma sample per pixel
+//   U plane: half resolution (width/2 x height/2), chroma blue-difference
+//   V plane: half resolution (width/2 x height/2), chroma red-difference
+//
+// The RGB-to-YUV conversion matrix (BT.601 limited range, Y in [16,235],
+// UV in [16,240]) is:
+//
+//   Y =  0.257*R + 0.504*G + 0.098*B + 16
+//   U = -0.148*R - 0.291*G + 0.439*B + 128
+//   V =  0.439*R - 0.368*G - 0.071*B + 128
+//
+// To avoid floating-point arithmetic, we scale by 256 and use integer math:
+//
+//   Y = (( 66*R + 129*G +  25*B + 128) >> 8) + 16
+//   U = ((-38*R -  74*G + 112*B + 128) >> 8) + 128
+//   V = ((112*R -  94*G -  18*B + 128) >> 8) + 128
+//
+// The U and V planes are subsampled 2x2: each chroma sample covers a block
+// of 4 pixels. Here we use the top-left pixel of each block for simplicity.
+function convertRGBXtoI420(rgbx, width, height) {
+  const ySize = width * height;
+  const uvWidth = width >> 1;
+  const uvHeight = height >> 1;
+  const uvSize = uvWidth * uvHeight;
+  const i420 = new Uint8Array(ySize + 2 * uvSize);
+
+  const yPlane = i420;
+  const uPlane = new Uint8Array(i420.buffer, ySize, uvSize);
+  const vPlane = new Uint8Array(i420.buffer, ySize + uvSize, uvSize);
+
+  // Y plane: one luma sample per pixel
+  for (let j = 0; j < height; j++) {
+    for (let i = 0; i < width; i++) {
+      const px = (j * width + i) * 4;
+      const r = rgbx[px], g = rgbx[px + 1], b = rgbx[px + 2];
+      yPlane[j * width + i] = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
+    }
+  }
+
+  // U and V planes: subsampled 2x2 (one sample per 4 pixels)
+  for (let j = 0; j < uvHeight; j++) {
+    for (let i = 0; i < uvWidth; i++) {
+      const px = (j * 2 * width + i * 2) * 4;
+      const r = rgbx[px], g = rgbx[px + 1], b = rgbx[px + 2];
+      uPlane[j * uvWidth + i] = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
+      vPlane[j * uvWidth + i] = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
+    }
+  }
+
+  return i420;
+}
+
+function drawI420ToCanvas(canvas, i420, width, height) {
+  const frame = new VideoFrame(i420.buffer, {
+    format: "I420",
+    codedWidth: width,
+    codedHeight: height,
+    timestamp: 0,
+  });
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(frame, 0, 0);
+  frame.close();
+}
+
+function createFrameFromData(frameData) {
+  return new VideoFrame(frameData.buffer, {
+    format: frameData.format,
+    codedWidth: frameData.width,
+    codedHeight: frameData.height,
+    timestamp: frameData.timestamp,
+  });
+}
+
+// --- Frame feeding ---
+
+async function feedFramesRealtime(
+  worker,
+  frames,
+  frameDuration,
+  keyFrameIntervalInFrames
+) {
+  let frameIndex = 0;
+  return new Promise((resolve) => {
+    const intervalId = setInterval(() => {
+      if (frameIndex >= frames.length) {
+        clearInterval(intervalId);
+        resolve();
+        return;
+      }
+      const frame = createFrameFromData(frames[frameIndex]);
+      worker.postMessage({
+        command: "encode",
+        frame,
+        isKey: frameIndex % keyFrameIntervalInFrames == 0,
+      });
+      frame.close();
+      frameIndex++;
+    }, frameDuration);
+  });
+}
+
+function feedFramesBatch(worker, frames, keyFrameIntervalInFrames) {
+  for (let i = 0; i < frames.length; i++) {
+    const frame = createFrameFromData(frames[i]);
+    worker.postMessage({
+      command: "encode",
+      frame,
+      isKey: i % keyFrameIntervalInFrames == 0,
+    });
+    frame.close();
+  }
+}
+
+// --- Test functions ---
+
+async function realtimeEncodeTest(config, frames, frameDuration) {
   const worker = new Worker("encoder-worker.js");
   config.latencyMode = "realtime";
   configureEncoder(worker, config);
 
-  const canvas = createCanvas(config.width, config.height);
-  await encodeCanvas(worker, canvas, fps, totalDuration, keyFrameInterval);
+  await feedFramesRealtime(worker, frames, frameDuration, KEY_FRAME_INTERVAL);
   let { encodeTimes, outputTimes } = await getEncoderResults(worker);
 
   let results = { key: {}, delta: {} };
@@ -134,7 +345,6 @@ async function realtimeEncodeTest(config) {
     results.delta.roundTripTimes.map(x => x.time)
   );
 
-  removeCanvas(canvas);
   worker.terminate();
 
   return {
@@ -165,22 +375,16 @@ async function realtimeEncodeTest(config) {
   };
 }
 
-async function qualityEncodeTest(config) {
-  const fps = 30;
-  const totalDuration = 3000; // ms
-  const keyFrameInterval = 15; // 1 key every 15 frames
-
+async function qualityEncodeTest(config, frames) {
   const worker = new Worker("encoder-worker.js");
   config.latencyMode = "quality";
   configureEncoder(worker, config);
 
-  const canvas = createCanvas(config.width, config.height);
-  await encodeCanvas(worker, canvas, fps, totalDuration, keyFrameInterval);
+  feedFramesBatch(worker, frames, KEY_FRAME_INTERVAL);
   let { encodeTimes, outputTimes } = await getEncoderResults(worker);
 
   let duration = getTotalDuration(encodeTimes, outputTimes);
 
-  removeCanvas(canvas);
   worker.terminate();
 
   return {
@@ -190,6 +394,8 @@ async function qualityEncodeTest(config) {
     },
   };
 }
+
+// --- Canvas / drawing ---
 
 function createCanvas(width, height) {
   const canvas = document.createElement("canvas");
@@ -302,6 +508,8 @@ function drawHand(ctx, pos, length, width, color = "black") {
   ctx.restore();
 }
 
+// --- Worker communication ---
+
 function configureEncoder(worker, config) {
   worker.postMessage({
     command: "configure",
@@ -309,51 +517,19 @@ function configureEncoder(worker, config) {
   });
 }
 
-async function encodeCanvas(
-  worker,
-  canvas,
-  fps,
-  totalDuration,
-  keyFrameIntervalInFrames
-) {
-  const frameDuration = Math.round(1000 / fps); // ms
-  let encodeDuration = 0;
-  let frameCount = 0;
-  let intervalId;
-
-  return new Promise((resolve, _) => {
-    // first callback happens after frameDuration.
-    intervalId = setInterval(() => {
-      if (encodeDuration > totalDuration) {
-        clearInterval(intervalId);
-        resolve(encodeDuration);
-        return;
-      }
-      drawClock(canvas);
-      const frame = new VideoFrame(canvas, { timestamp: encodeDuration });
-      worker.postMessage({
-        command: "encode",
-        frame,
-        isKey: frameCount % keyFrameIntervalInFrames == 0,
-      });
-      frameCount += 1;
-      encodeDuration += frameDuration;
-      frame.close();
-    }, frameDuration);
-  });
-}
-
 async function getEncoderResults(worker) {
   worker.postMessage({ command: "flush" });
   return new Promise((resolve, _) => {
     worker.onmessage = event => {
-      if (event.data.command === "result") {
+      if (event.data.command == "result") {
         const { encodeTimes, outputTimes } = event.data;
         resolve({ encodeTimes, outputTimes });
       }
     };
   });
 }
+
+// --- Statistics ---
 
 function getTotalDuration(encodeTimes, outputTimes) {
   if (!outputTimes.length || encodeTimes.length < outputTimes.length) {

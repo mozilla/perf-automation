@@ -24,6 +24,21 @@
   #in-progress {
     display: none;
   }
+  #errors {
+    display: none;
+    margin: 1em;
+    padding: 0.5em;
+    border: 1px solid red;
+    background-color: #fff0f0;
+    color: red;
+  }
+  #errors h3 {
+    margin: 0 0 0.5em 0;
+  }
+  #errors ul {
+    margin: 0;
+    padding-left: 1.5em;
+  }
 </style>
 </head>
 <body>
@@ -33,6 +48,10 @@
     <progress id=progress-bar> </progress>
     <span id=progress-label>Benchmark in progress...</span>
   </div>
+</div>
+<div id=errors>
+  <h3>Errors</h3>
+  <ul id=error-list></ul>
 </div>
 <div id=results>
 </div>

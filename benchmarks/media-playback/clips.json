@@ -1,0 +1,44 @@
+{
+  "h264_1080p30": {
+    "file": "clips/h264_1080p30.mp4",
+    "codec": "h264",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30
+  },
+  "vp9_1080p30": {
+    "file": "clips/vp9_1080p30.webm",
+    "codec": "vp9",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30
+  },
+  "av1_1080p30": {
+    "file": "clips/av1_1080p30.mp4",
+    "codec": "av1",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30
+  },
+  "h264_2160p30": {
+    "file": "clips/h264_2160p30.mp4",
+    "codec": "h264",
+    "width": 3840,
+    "height": 2160,
+    "fps": 30
+  },
+  "vp9_2160p30": {
+    "file": "clips/vp9_2160p30.webm",
+    "codec": "vp9",
+    "width": 3840,
+    "height": 2160,
+    "fps": 30
+  },
+  "av1_2160p30": {
+    "file": "clips/av1_2160p30.mp4",
+    "codec": "av1",
+    "width": 3840,
+    "height": 2160,
+    "fps": 30
+  }
+}

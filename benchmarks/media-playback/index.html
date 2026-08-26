@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Media playback benchmark</title>
+    <style>
+      body {
+        margin: 0;
+        background: #000;
+        color: #0f0;
+        font: 12px monospace;
+      }
+
+      /* Letterbox rather than crop, and state it rather than relying on each
+         browser's default for fullscreen video. */
+      video:fullscreen {
+        object-fit: contain;
+      }
+
+      #stage:fullscreen {
+        width: 100%;
+        height: 100%;
+      }
+
+      #status {
+        padding: 4px;
+        white-space: pre;
+      }
+    </style>
+  </head>
+  <body>
+    <button id="gesture">fullscreen</button>
+    <div id="stage"></div>
+    <div id="status"></div>
+    <script src="drivers/single.js"></script>
+    <script src="drivers/idle.js"></script>
+    <script src="core.js"></script>
+  </body>
+</html>
